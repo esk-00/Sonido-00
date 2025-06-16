@@ -40,6 +40,10 @@ export class SocialListeningStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // CloudFront用のOrigin Access Identity
+    const oai = new cloudfront.OriginAccessIdentity(this, 'StaticBucketOAI');
+    staticBucket.grantRead(oai);
+
     // ==============================================
     // DynamoDB Tables
     // ==============================================
@@ -51,7 +55,7 @@ export class SocialListeningStack extends cdk.Stack {
       sortKey: { name: 'timestamp', type: dynamodb.AttributeType.NUMBER },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
-      pointInTimeRecovery: true,
+      pointInTimeRecoveryEnabled: true, // 修正：非推奨APIから新しいAPIへ
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
@@ -169,6 +173,7 @@ export class SocialListeningStack extends cdk.Stack {
         POSTS_TABLE_NAME: postsTable.tableName,
         SENTIMENT_TABLE_NAME: sentimentTable.tableName,
         BEDROCK_MODEL_ID: props.novaModelId,
+        // 修正：AWS_REGION環境変数を削除（Lambdaランタイムが自動設定）
       },
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
@@ -228,20 +233,26 @@ export class SocialListeningStack extends cdk.Stack {
     
     const distribution = new cloudfront.Distribution(this, 'SocialListeningDistribution', {
       defaultBehavior: {
-        origin: new origins.RestApiOrigin(api),
+        origin: new origins.RestApiOrigin(api, {
+          originPath: '/prod', // 修正：ステージ名を明示的に指定
+        }),
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       },
       additionalBehaviors: {
         '/gradio/*': {
-          origin: new origins.RestApiOrigin(api),
+          origin: new origins.RestApiOrigin(api, {
+            originPath: '/prod', // 修正：ステージ名を明示的に指定
+          }),
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         },
         '/static/*': {
-          origin: new origins.S3Origin(staticBucket),
+          origin: new origins.S3Origin(staticBucket, {
+            originAccessIdentity: oai, // 修正：OAIを使用してセキュアアクセス
+          }),
           cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         },
