@@ -169,7 +169,6 @@ export class SocialListeningStack extends cdk.Stack {
         POSTS_TABLE_NAME: postsTable.tableName,
         SENTIMENT_TABLE_NAME: sentimentTable.tableName,
         BEDROCK_MODEL_ID: props.novaModelId,
-        AWS_REGION: this.region,
       },
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
