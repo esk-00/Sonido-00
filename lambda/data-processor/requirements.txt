@@ -1,6 +1,12 @@
 # AWS SDK
 boto3>=1.26.0
 botocore>=1.29.0
+gradio>=4.0.0
+mangum==0.17.0
+pandas==2.2.2
+plotly==5.22.0
+requests==2.31.0
+transformers==4.41.2
 
 # 数値計算・統計処理
 # 標準ライブラリのstatisticsを使用するため、追加パッケージは最小限
