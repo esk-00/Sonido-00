@@ -55,7 +55,7 @@ export class SocialListeningStack extends cdk.Stack {
       sortKey: { name: 'timestamp', type: dynamodb.AttributeType.NUMBER },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
-      pointInTimeRecoveryEnabled: true, // 修正：非推奨APIから新しいAPIへ
+      pointInTimeRecovery: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 

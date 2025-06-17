@@ -410,7 +410,11 @@ def main():
     app = SocialListeningApp()
     interface = app.build_interface()
     
-    # 環境変数から設定を取得
+    # Lambda環境の場合はinterfaceを返すだけ
+    if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+        return interface
+    
+    # ローカル環境の場合は起動
     port = int(os.getenv('PORT', 7860))
     host = os.getenv('HOST', '0.0.0.0')
     
@@ -420,6 +424,7 @@ def main():
         share=False,
         debug=os.getenv('DEBUG', 'False').lower() == 'true'
     )
-
+    
+    return interface
 if __name__ == "__main__":
     main()
