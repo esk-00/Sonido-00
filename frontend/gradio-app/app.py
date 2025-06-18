@@ -5,76 +5,76 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import json
 import boto3
-from typing import Dict, List, Tuple
 import os
-import requests
-from transformers import pipeline
-import asyncio
-import concurrent.futures
-from components.data_visualizer import DataVisualizer
-from components.sentiment_analyzer import SentimentAnalyzer
-from components.report_generator import ReportGenerator
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class SocialListeningApp:
     def __init__(self):
-        self.data_visualizer = DataVisualizer()
-        self.sentiment_analyzer = SentimentAnalyzer()
-        self.report_generator = ReportGenerator()
+        self.setup_aws_clients()
         
-        # AWS設定
-        self.dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION', 'us-east-1'))
-        self.bedrock = boto3.client('bedrock-runtime', region_name=os.getenv('AWS_REGION', 'us-east-1'))
-        self.api_gateway_url = os.getenv('API_GATEWAY_URL')
-        
-        # Hugging Face モデル初期化
-        self.sentiment_pipeline = pipeline("sentiment-analysis", 
-                                          model="cardiffnlp/twitter-roberta-base-sentiment-latest")
-        
-        # データベーステーブル
-        self.posts_table = self.dynamodb.Table(os.getenv('POSTS_TABLE', 'social-posts'))
-        self.analytics_table = self.dynamodb.Table(os.getenv('ANALYTICS_TABLE', 'social-analytics'))
-
-    def fetch_posts_data(self, keyword: str, date_range: int = 7) -> pd.DataFrame:
-        """DynamoDBから投稿データを取得"""
+    def setup_aws_clients(self):
+        """AWS クライアントの初期化"""
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=date_range)
+            self.dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+            self.bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
+            self.posts_table_name = os.getenv('POSTS_TABLE_NAME', 'social-listening-posts')
+            self.sentiment_table_name = os.getenv('SENTIMENT_TABLE_NAME', 'social-listening-sentiment')
+            logger.info("AWS clients initialized successfully")
+        except Exception as e:
+            logger.error(f"AWS client initialization failed: {e}")
+            self.dynamodb = None
+            self.bedrock = None
+
+    def search_posts(self, keyword: str, days: int = 7) -> pd.DataFrame:
+        """投稿を検索（DynamoDBから）"""
+        if not keyword.strip():
+            return pd.DataFrame()
             
-            response = self.posts_table.scan(
-                FilterExpression=boto3.dynamodb.conditions.Attr('keyword').contains(keyword) &
+        if not self.dynamodb:
+            return pd.DataFrame()
+            
+        try:
+            table = self.dynamodb.Table(self.posts_table_name)
+            
+            # 日付範囲
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            
+            response = table.scan(
+                FilterExpression=boto3.dynamodb.conditions.Attr('content').contains(keyword) &
                                boto3.dynamodb.conditions.Attr('timestamp').between(
-                                   start_date.isoformat(), end_date.isoformat()
+                                   int(start_date.timestamp()),
+                                   int(end_date.timestamp())
                                )
             )
             
-            items = response['Items']
+            items = response.get('Items', [])
+            if not items:
+                return pd.DataFrame()
+                
             df = pd.DataFrame(items)
-            
-            if not df.empty:
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df = df.sort_values('timestamp', ascending=False)
-            
-            return df
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+            return df.sort_values('timestamp', ascending=False)
             
         except Exception as e:
-            gr.Warning(f"データ取得エラー: {str(e)}")
+            logger.error(f"DynamoDB search failed: {e}")
             return pd.DataFrame()
 
-    def analyze_sentiment_with_bedrock(self, text: str) -> Dict:
-        """Bedrock Novaで感情分析"""
+    def analyze_sentiment_bedrock(self, text: str) -> dict:
+        """Bedrockで感情分析"""
+        if not self.bedrock:
+            return {'sentiment': 'neutral', 'confidence': 0.5}
+        
         try:
             prompt = f"""
-            以下のテキストの感情を分析してください。
+            以下のテキストの感情を分析してください：
+            {text}
             
-            テキスト: {text}
-            
-            以下の形式でJSONで回答してください:
-            {{
-                "sentiment": "positive/negative/neutral",
-                "confidence": 0.0-1.0,
-                "emotions": ["joy", "anger", "sadness", "fear", "surprise"],
-                "summary": "分析結果の要約"
-            }}
+            JSONで回答してください：
+            {{"sentiment": "positive/negative/neutral", "confidence": 0.0-1.0}}
             """
             
             response = self.bedrock.invoke_model(
@@ -82,349 +82,394 @@ class SocialListeningApp:
                 body=json.dumps({
                     "inputText": prompt,
                     "textGenerationConfig": {
-                        "maxTokenCount": 500,
+                        "maxTokenCount": 200,
                         "temperature": 0.1
                     }
                 })
             )
             
             result = json.loads(response['body'].read())
-            return json.loads(result['results'][0]['outputText'])
+            output_text = result['results'][0]['outputText']
+            
+            # JSON部分を抽出
+            import re
+            json_match = re.search(r'\{.*\}', output_text)
+            if json_match:
+                return json.loads(json_match.group())
+            
+            return {'sentiment': 'neutral', 'confidence': 0.5}
             
         except Exception as e:
-            return {
-                "sentiment": "neutral",
-                "confidence": 0.5,
-                "emotions": [],
-                "summary": f"分析エラー: {str(e)}"
-            }
-
-    def analyze_sentiment_with_huggingface(self, texts: List[str]) -> List[Dict]:
-        """Hugging Faceで感情分析"""
-        try:
-            results = self.sentiment_pipeline(texts)
-            return [
-                {
-                    "sentiment": result['label'].lower(),
-                    "confidence": result['score'],
-                    "text": text
-                }
-                for result, text in zip(results, texts)
-            ]
-        except Exception as e:
-            gr.Warning(f"感情分析エラー: {str(e)}")
-            return []
-
-    def extract_posts(self, keyword: str, platform: str, count: int = 100) -> str:
-        """API Gateway経由で投稿を抽出"""
-        try:
-            response = requests.post(
-                f"{self.api_gateway_url}/extract-posts",
-                json={
-                    "keyword": keyword,
-                    "platform": platform,
-                    "count": count
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return f"✅ {result.get('extracted_count', 0)}件の投稿を抽出しました"
-            else:
-                return f"❌ 抽出エラー: {response.text}"
-                
-        except Exception as e:
-            return f"❌ 抽出エラー: {str(e)}"
+            logger.error(f"Bedrock analysis failed: {e}")
+            return {'sentiment': 'neutral', 'confidence': 0.5}
 
     def create_sentiment_chart(self, df: pd.DataFrame) -> go.Figure:
-        """感情分析チャートを作成"""
+        """感情分析チャート作成"""
         if df.empty:
-            return go.Figure().add_annotation(text="データがありません", showarrow=False)
+            fig = go.Figure()
+            fig.add_annotation(
+                text="データがありません",
+                x=0.5, y=0.5,
+                xref="paper", yref="paper",
+                showarrow=False,
+                font=dict(size=16, color="gray")
+            )
+            fig.update_layout(height=400)
+            return fig
         
         sentiment_counts = df['sentiment'].value_counts()
+        total = len(df)
         
-        fig = px.pie(
-            values=sentiment_counts.values,
-            names=sentiment_counts.index,
-            title="感情分析結果",
-            color_discrete_map={
-                'positive': '#2E8B57',
-                'negative': '#DC143C',
-                'neutral': '#708090'
-            }
+        colors = {
+            'positive': '#4CAF50',  # Green
+            'negative': '#F44336',  # Red
+            'neutral': '#9E9E9E'    # Gray
+        }
+        
+        labels = []
+        values = []
+        colors_list = []
+        
+        for sentiment in ['positive', 'negative', 'neutral']:
+            count = sentiment_counts.get(sentiment, 0)
+            if count > 0:
+                percentage = (count / total * 100)
+                
+                if sentiment == 'positive':
+                    label = f"ポジティブ<br>{count}件 ({percentage:.1f}%)"
+                elif sentiment == 'negative':
+                    label = f"ネガティブ<br>{count}件 ({percentage:.1f}%)"
+                else:
+                    label = f"ニュートラル<br>{count}件 ({percentage:.1f}%)"
+                
+                labels.append(label)
+                values.append(count)
+                colors_list.append(colors[sentiment])
+        
+        if not values:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="感情データがありません",
+                x=0.5, y=0.5,
+                xref="paper", yref="paper",
+                showarrow=False,
+                font=dict(size=16, color="gray")
+            )
+            fig.update_layout(height=400)
+            return fig
+        
+        fig = go.Figure(data=[go.Pie(
+            labels=labels,
+            values=values,
+            marker_colors=colors_list,
+            textinfo='label',
+            textposition='inside',
+            hole=0.3,
+            textfont=dict(size=12, color="white")
+        )])
+        
+        fig.update_layout(
+            title=dict(
+                text="感情分析結果",
+                font=dict(size=20, color="#333"),
+                x=0.5
+            ),
+            font=dict(family="Arial, sans-serif"),
+            height=400,
+            margin=dict(t=60, b=20, l=20, r=20),
+            showlegend=False
         )
         
         return fig
 
     def create_timeline_chart(self, df: pd.DataFrame) -> go.Figure:
-        """時系列チャートを作成"""
+        """時系列チャート作成"""
         if df.empty:
-            return go.Figure().add_annotation(text="データがありません", showarrow=False)
+            fig = go.Figure()
+            fig.add_annotation(
+                text="データがありません",
+                x=0.5, y=0.5,
+                xref="paper", yref="paper",
+                showarrow=False,
+                font=dict(size=16, color="gray")
+            )
+            fig.update_layout(height=400)
+            return fig
         
-        # 日別投稿数
-        daily_counts = df.groupby(df['timestamp'].dt.date).size().reset_index()
-        daily_counts.columns = ['date', 'count']
+        # 日別集計
+        df['date'] = df['timestamp'].dt.date
+        daily_counts = df.groupby(['date', 'sentiment']).size().unstack(fill_value=0)
         
-        fig = px.line(
-            daily_counts,
-            x='date',
-            y='count',
-            title="日別投稿数推移",
-            markers=True
-        )
+        colors = {
+            'positive': '#4CAF50',
+            'negative': '#F44336',
+            'neutral': '#9E9E9E'
+        }
+        
+        sentiment_names = {
+            'positive': 'ポジティブ',
+            'negative': 'ネガティブ',
+            'neutral': 'ニュートラル'
+        }
+        
+        fig = go.Figure()
+        
+        for sentiment in ['positive', 'negative', 'neutral']:
+            if sentiment in daily_counts.columns:
+                fig.add_trace(go.Scatter(
+                    x=daily_counts.index,
+                    y=daily_counts[sentiment],
+                    mode='lines+markers',
+                    name=sentiment_names[sentiment],
+                    line=dict(color=colors[sentiment], width=3),
+                    marker=dict(size=8)
+                ))
         
         fig.update_layout(
+            title=dict(
+                text="感情推移（日別）",
+                font=dict(size=20, color="#333"),
+                x=0.5
+            ),
             xaxis_title="日付",
-            yaxis_title="投稿数"
+            yaxis_title="投稿数",
+            font=dict(family="Arial, sans-serif"),
+            height=400,
+            margin=dict(t=60, b=50, l=50, r=20),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            hovermode='x unified'
         )
         
         return fig
 
-    def create_word_frequency_chart(self, df: pd.DataFrame) -> go.Figure:
-        """単語頻度チャートを作成"""
+    def generate_summary(self, df: pd.DataFrame, keyword: str) -> str:
+        """分析サマリー生成"""
         if df.empty:
-            return go.Figure().add_annotation(text="データがありません", showarrow=False)
-        
-        # 簡単な単語分析（実際にはMeCabなどを使用）
-        all_text = ' '.join(df['content'].astype(str))
-        words = all_text.split()
-        word_freq = pd.Series(words).value_counts().head(20)
-        
-        fig = px.bar(
-            x=word_freq.values,
-            y=word_freq.index,
-            orientation='h',
-            title="頻出単語TOP20"
-        )
-        
-        fig.update_layout(
-            xaxis_title="出現回数",
-            yaxis_title="単語"
-        )
-        
-        return fig
+            return f"""
+# 📊 分析結果 - {keyword}
 
-    def generate_summary_report(self, df: pd.DataFrame, keyword: str) -> str:
-        """分析レポートを生成"""
-        if df.empty:
-            return "データがありません"
+## ❌ データが見つかりません
+
+「{keyword}」に関する投稿データが見つかりませんでした。
+
+### 考えられる原因:
+- データベースに該当する投稿がない
+- キーワードの表記が異なる
+- 指定した期間にデータがない
+
+### 改善案:
+- 別のキーワードで検索してみる
+- 期間を延長してみる
+- より一般的な用語で検索してみる
+"""
         
         total_posts = len(df)
         sentiment_dist = df['sentiment'].value_counts()
         
-        # Bedrockでレポート生成
-        prompt = f"""
-        キーワード「{keyword}」に関するソーシャルメディア分析レポートを作成してください。
+        positive_count = sentiment_dist.get('positive', 0)
+        negative_count = sentiment_dist.get('negative', 0)
+        neutral_count = sentiment_dist.get('neutral', 0)
         
-        データ概要:
-        - 総投稿数: {total_posts}
-        - 感情分布: {sentiment_dist.to_dict()}
-        - 期間: {df['timestamp'].min()} - {df['timestamp'].max()}
+        positive_pct = (positive_count / total_posts) * 100
+        negative_pct = (negative_count / total_posts) * 100
+        neutral_pct = (neutral_count / total_posts) * 100
         
-        以下の点を含めて日本語でレポートを作成してください:
-        1. 概要
-        2. 感情分析結果
-        3. 主要なトレンド
-        4. 注目すべき投稿
-        5. 改善提案
+        # 総合スコア計算
+        overall_score = positive_pct - negative_pct
+        
+        # スコアに基づく評価
+        if overall_score > 30:
+            overall_status = "🟢 **非常に良好**"
+        elif overall_score > 10:
+            overall_status = "🟡 **良好**"
+        elif overall_score > -10:
+            overall_status = "🟡 **中立**"
+        elif overall_score > -30:
+            overall_status = "🟠 **注意が必要**"
+        else:
+            overall_status = "🔴 **要緊急対応**"
+
+        # プラットフォーム分析
+        platform_dist = df['platform'].value_counts()
+        top_platform = platform_dist.index[0] if len(platform_dist) > 0 else "不明"
+        
+        # 時間分析
+        latest_post = df['timestamp'].max()
+        oldest_post = df['timestamp'].min()
+
+        summary = f"""
+# 📊 分析レポート - {keyword}
+
+## 🎯 総合評価
+{overall_status}  
+**スコア**: {overall_score:+.1f}点
+
+## 📈 基本統計
+- **総投稿数**: {total_posts:,}件
+- **分析期間**: {oldest_post.strftime('%Y年%m月%d日')} ～ {latest_post.strftime('%Y年%m月%d日')}
+
+## 💭 感情分析結果
+| 感情 | 件数 | 割合 |
+|------|------|------|
+| 🟢 ポジティブ | {positive_count:,}件 | {positive_pct:.1f}% |
+| 🔴 ネガティブ | {negative_count:,}件 | {negative_pct:.1f}% |
+| ⚪ ニュートラル | {neutral_count:,}件 | {neutral_pct:.1f}% |
+
+## 📱 プラットフォーム分析
+- **最も多い投稿元**: {top_platform}
+
+---
+*分析実行時刻: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}*
+"""
+        
+        return summary
+
+    def create_interface(self):
+        """Gradioインターフェース作成"""
+        
+        custom_css = """
+        .gradio-container {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .main-header {
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
         """
         
-        try:
-            response = self.bedrock.invoke_model(
-                modelId="amazon.nova-micro-v1:0",
-                body=json.dumps({
-                    "inputText": prompt,
-                    "textGenerationConfig": {
-                        "maxTokenCount": 1000,
-                        "temperature": 0.3
-                    }
-                })
+        with gr.Blocks(
+            title="ソーシャルリスニングツール", 
+            theme=gr.themes.Soft(),
+            css=custom_css
+        ) as app:
+            
+            gr.HTML("""
+            <div class="main-header">
+                <h1>🔍 ソーシャルリスニングツール</h1>
+                <p>ブランドや商品に関するソーシャルメディアの投稿を分析し、リアルタイムで感情を可視化します</p>
+            </div>
+            """)
+            
+            with gr.Row():
+                with gr.Column(scale=3):
+                    keyword_input = gr.Textbox(
+                        label="🔍 検索キーワード",
+                        placeholder="例: iPhone, Nintendo, Starbucks, 新商品名など",
+                        info="分析したいブランド、商品、サービス名を入力してください"
+                    )
+                with gr.Column(scale=1):
+                    days_input = gr.Slider(
+                        minimum=1,
+                        maximum=30,
+                        value=7,
+                        step=1,
+                        label="📅 分析期間（日）",
+                        info="過去何日間のデータを分析するか"
+                    )
+                with gr.Column(scale=1):
+                    search_btn = gr.Button(
+                        "🚀 分析開始", 
+                        variant="primary", 
+                        size="lg"
+                    )
+            
+            with gr.Row():
+                with gr.Column():
+                    sentiment_chart = gr.Plot(label="感情分析結果")
+                with gr.Column():
+                    timeline_chart = gr.Plot(label="感情推移")
+            
+            summary_output = gr.Markdown(
+                label="📋 分析レポート",
+                value="分析を開始するには、キーワードを入力して「分析開始」ボタンをクリックしてください。"
             )
             
-            result = json.loads(response['body'].read())
-            return result['results'][0]['outputText']
+            with gr.Accordion("📄 投稿データ詳細", open=False):
+                posts_data = gr.Dataframe(
+                    headers=["投稿内容", "プラットフォーム", "感情", "信頼度", "投稿時間"],
+                    interactive=False,
+                    wrap=True,
+                    height=300
+                )
             
-        except Exception as e:
-            return f"レポート生成エラー: {str(e)}"
-
-    def build_interface(self):
-        """Gradioインターフェースを構築"""
-        
-        with gr.Blocks(title="Social Listening Tool", theme=gr.themes.Soft()) as app:
-            gr.Markdown("# 🔍 ソーシャルリスニングツール")
-            gr.Markdown("SNSの投稿を分析して、ブランドや商品に関する評判を監視します")
-            
-            with gr.Tabs() as tabs:
-                # データ抽出タブ
-                with gr.TabItem("📊 データ抽出"):
-                    with gr.Row():
-                        with gr.Column():
-                            keyword_input = gr.Textbox(
-                                label="検索キーワード",
-                                placeholder="例: 新商品, ブランド名",
-                                value=""
-                            )
-                            platform_select = gr.Dropdown(
-                                choices=["twitter", "instagram", "facebook", "all"],
-                                label="プラットフォーム",
-                                value="twitter"
-                            )
-                            count_slider = gr.Slider(
-                                minimum=10,
-                                maximum=1000,
-                                value=100,
-                                step=10,
-                                label="抽出件数"
-                            )
-                            extract_btn = gr.Button("🔍 投稿を抽出", variant="primary")
-                        
-                        with gr.Column():
-                            extract_status = gr.Textbox(
-                                label="抽出状況",
-                                interactive=False,
-                                lines=3
-                            )
+            def perform_analysis(keyword, days):
+                """分析実行"""
+                if not keyword.strip():
+                    empty_fig = go.Figure()
+                    empty_fig.add_annotation(
+                        text="キーワードを入力してください",
+                        x=0.5, y=0.5, xref="paper", yref="paper",
+                        showarrow=False, font=dict(size=16, color="red")
+                    )
+                    empty_fig.update_layout(height=400)
+                    return empty_fig, empty_fig, "キーワードを入力してください", []
                 
-                # 分析ダッシュボードタブ
-                with gr.TabItem("📈 分析ダッシュボード"):
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            analysis_keyword = gr.Textbox(
-                                label="分析キーワード",
-                                placeholder="分析するキーワードを入力"
-                            )
-                            date_range = gr.Slider(
-                                minimum=1,
-                                maximum=30,
-                                value=7,
-                                step=1,
-                                label="分析期間（日）"
-                            )
-                            analyze_btn = gr.Button("📊 分析実行", variant="primary")
-                            refresh_btn = gr.Button("🔄 データ更新")
-                        
-                        with gr.Column(scale=3):
-                            with gr.Row():
-                                sentiment_chart = gr.Plot(label="感情分析")
-                                timeline_chart = gr.Plot(label="時系列推移")
-                            
-                            word_freq_chart = gr.Plot(label="頻出単語")
+                # データ取得
+                df = self.search_posts(keyword, days)
                 
-                # 詳細レポートタブ
-                with gr.TabItem("📋 詳細レポート"):
-                    with gr.Row():
-                        with gr.Column():
-                            report_keyword = gr.Textbox(
-                                label="レポート対象キーワード",
-                                placeholder="レポートを生成するキーワード"
-                            )
-                            report_btn = gr.Button("📝 レポート生成", variant="primary")
-                        
-                        with gr.Column(scale=2):
-                            report_output = gr.Textbox(
-                                label="分析レポート",
-                                lines=15,
-                                interactive=False
-                            )
-                
-                # 投稿データビューアタブ
-                with gr.TabItem("💬 投稿データ"):
-                    with gr.Row():
-                        with gr.Column():
-                            viewer_keyword = gr.Textbox(
-                                label="表示キーワード",
-                                placeholder="表示する投稿のキーワード"
-                            )
-                            load_posts_btn = gr.Button("📄 投稿を読み込み")
-                        
-                        with gr.Column(scale=3):
-                            posts_dataframe = gr.Dataframe(
-                                headers=["日時", "プラットフォーム", "内容", "感情", "信頼度"],
-                                interactive=False
-                            )
-            
-            # イベントハンドラー
-            extract_btn.click(
-                fn=self.extract_posts,
-                inputs=[keyword_input, platform_select, count_slider],
-                outputs=extract_status
-            )
-            
-            def analyze_data(keyword, days):
-                df = self.fetch_posts_data(keyword, days)
-                
+                # チャート生成
                 sentiment_fig = self.create_sentiment_chart(df)
                 timeline_fig = self.create_timeline_chart(df)
-                word_freq_fig = self.create_word_frequency_chart(df)
                 
-                return sentiment_fig, timeline_fig, word_freq_fig
-            
-            analyze_btn.click(
-                fn=analyze_data,
-                inputs=[analysis_keyword, date_range],
-                outputs=[sentiment_chart, timeline_chart, word_freq_chart]
-            )
-            
-            refresh_btn.click(
-                fn=analyze_data,
-                inputs=[analysis_keyword, date_range],
-                outputs=[sentiment_chart, timeline_chart, word_freq_chart]
-            )
-            
-            report_btn.click(
-                fn=lambda keyword: self.generate_summary_report(
-                    self.fetch_posts_data(keyword), keyword
-                ),
-                inputs=report_keyword,
-                outputs=report_output
-            )
-            
-            def load_posts_table(keyword):
-                df = self.fetch_posts_data(keyword)
-                if df.empty:
-                    return []
+                # サマリー生成
+                summary = self.generate_summary(df, keyword)
                 
-                # 表示用データフォーマット
+                # 投稿データの準備
                 display_data = []
-                for _, row in df.head(100).iterrows():
-                    display_data.append([
-                        row['timestamp'].strftime('%Y-%m-%d %H:%M'),
-                        row.get('platform', 'unknown'),
-                        row['content'][:100] + "..." if len(row['content']) > 100 else row['content'],
-                        row.get('sentiment', 'unknown'),
-                        f"{row.get('confidence', 0):.2f}"
-                    ])
+                if not df.empty:
+                    for _, row in df.head(50).iterrows():
+                        content_preview = row['content'][:150] + "..." if len(row['content']) > 150 else row['content']
+                        display_data.append([
+                            content_preview,
+                            row.get('platform', 'unknown').title(),
+                            "🟢 ポジティブ" if row['sentiment'] == 'positive' 
+                            else "🔴 ネガティブ" if row['sentiment'] == 'negative' 
+                            else "⚪ ニュートラル",
+                            f"{row.get('confidence', 0):.1%}",
+                            row['timestamp'].strftime('%Y-%m-%d %H:%M')
+                        ])
                 
-                return display_data
+                return sentiment_fig, timeline_fig, summary, display_data
             
-            load_posts_btn.click(
-                fn=load_posts_table,
-                inputs=viewer_keyword,
-                outputs=posts_dataframe
+            search_btn.click(
+                fn=perform_analysis,
+                inputs=[keyword_input, days_input],
+                outputs=[sentiment_chart, timeline_chart, summary_output, posts_data]
+            )
+            
+            keyword_input.submit(
+                fn=perform_analysis,
+                inputs=[keyword_input, days_input],
+                outputs=[sentiment_chart, timeline_chart, summary_output, posts_data]
             )
         
         return app
 
 def main():
-    app = SocialListeningApp()
-    interface = app.build_interface()
+    app_instance = SocialListeningApp()
+    interface = app_instance.create_interface()
     
-    # Lambda環境の場合はinterfaceを返すだけ
     if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
         return interface
     
-    # ローカル環境の場合は起動
-    port = int(os.getenv('PORT', 7860))
-    host = os.getenv('HOST', '0.0.0.0')
-    
     interface.launch(
-        server_name=host,
-        server_port=port,
+        server_name="0.0.0.0",
+        server_port=7860,
         share=False,
-        debug=os.getenv('DEBUG', 'False').lower() == 'true'
+        show_error=True
     )
     
     return interface
+
 if __name__ == "__main__":
     main()

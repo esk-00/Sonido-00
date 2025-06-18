@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Social Listening Tool - リアルタイム感情分析</title>
+    <title>Social Listening Tool</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -22,414 +23,534 @@
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 0 20px;
+            padding: 20px;
         }
 
-        /* Header */
-        header {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 1rem 0;
-            position: fixed;
-            width: 100%;
-            top: 0;
-            z-index: 1000;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: white;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .nav-links {
-            display: flex;
-            list-style: none;
-            gap: 2rem;
-        }
-
-        .nav-links a {
-            color: white;
-            text-decoration: none;
-            transition: opacity 0.3s;
-        }
-
-        .nav-links a:hover {
-            opacity: 0.8;
-        }
-
-        /* Main Content */
-        main {
-            margin-top: 80px;
-            padding: 2rem 0;
-        }
-
-        .hero {
+        .header {
             text-align: center;
-            padding: 4rem 0;
             color: white;
+            margin-bottom: 40px;
         }
 
-        .hero h1 {
-            font-size: 3.5rem;
-            margin-bottom: 1rem;
-            background: linear-gradient(45deg, #fff, #f0f0f0);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
         }
 
-        .hero p {
-            font-size: 1.2rem;
-            margin-bottom: 2rem;
+        .header p {
+            font-size: 1.1rem;
             opacity: 0.9;
         }
 
-        .cta-button {
-            display: inline-block;
-            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
-            color: white;
-            padding: 1rem 2rem;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: bold;
-            transition: transform 0.3s, box-shadow 0.3s;
-            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.3);
-        }
-
-        .cta-button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 15px 40px rgba(255, 107, 107, 0.4);
-        }
-
-        /* Features Section */
-        .features {
-            padding: 4rem 0;
+        .search-section {
             background: white;
-        }
-
-        .features h2 {
-            text-align: center;
-            font-size: 2.5rem;
-            margin-bottom: 3rem;
-            color: #333;
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-
-        .feature-card {
-            background: linear-gradient(135deg, #f8f9ff 0%, #e8ecff 100%);
-            padding: 2rem;
             border-radius: 15px;
-            text-align: center;
-            transition: transform 0.3s, box-shadow 0.3s;
-            border: 1px solid rgba(102, 126, 234, 0.1);
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
 
-        .feature-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.15);
+        .search-form {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: end;
         }
 
-        .feature-icon {
-            font-size: 3rem;
-            color: #667eea;
-            margin-bottom: 1rem;
+        .form-group {
+            flex: 1;
+            min-width: 200px;
         }
 
-        .feature-card h3 {
-            font-size: 1.3rem;
-            margin-bottom: 1rem;
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
             color: #333;
         }
 
-        .feature-card p {
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .search-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            height: fit-content;
+        }
+
+        .search-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .search-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
             color: #666;
-            line-height: 1.6;
         }
 
-        /* Status Dashboard */
-        .dashboard {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            padding: 4rem 0;
-            color: white;
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
         }
 
-        .dashboard h2 {
-            text-align: center;
-            font-size: 2.5rem;
-            margin-bottom: 3rem;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 2rem;
-        }
-
-        .stat-card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 2rem;
+        .results-section {
+            background: white;
             border-radius: 15px;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: none;
         }
 
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #3498db;
-            margin-bottom: 0.5rem;
+        .results-section.show {
+            display: block;
         }
 
-        .stat-label {
-            font-size: 1rem;
-            opacity: 0.8;
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
         }
 
-        /* Footer */
-        footer {
-            background: #2c3e50;
+        .chart-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 400px;
+        }
+
+        .summary-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .posts-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .post-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .post-item.positive {
+            border-left-color: #4CAF50;
+        }
+
+        .post-item.negative {
+            border-left-color: #F44336;
+        }
+
+        .post-item.neutral {
+            border-left-color: #9E9E9E;
+        }
+
+        .post-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .sentiment-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .sentiment-badge.positive {
+            background: #4CAF50;
             color: white;
-            text-align: center;
-            padding: 2rem 0;
         }
 
-        /* Responsive */
+        .sentiment-badge.negative {
+            background: #F44336;
+            color: white;
+        }
+
+        .sentiment-badge.neutral {
+            background: #9E9E9E;
+            color: white;
+        }
+
+        .error-message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
         @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 2.5rem;
+            .search-form {
+                flex-direction: column;
             }
             
-            .nav-links {
-                display: none;
-            }
-            
-            .features-grid {
+            .charts-grid {
                 grid-template-columns: 1fr;
             }
-        }
-
-        .status-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #27ae60;
-            margin-right: 8px;
-            box-shadow: 0 0 10px rgba(39, 174, 96, 0.5);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 10px rgba(39, 174, 96, 0.5); }
-            50% { box-shadow: 0 0 20px rgba(39, 174, 96, 0.8); }
-            100% { box-shadow: 0 0 10px rgba(39, 174, 96, 0.5); }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
         }
     </style>
 </head>
 <body>
-    <header>
-        <nav class="container">
-            <div class="logo">
-                <i class="fas fa-chart-line"></i>
-                Social Listening Tool
-            </div>
-            <ul class="nav-links">
-                <li><a href="#features">機能</a></li>
-                <li><a href="#dashboard">ダッシュボード</a></li>
-                <li><a href="#contact">お問い合わせ</a></li>
-            </ul>
-        </nav>
-    </header>
-
-    <main>
-        <section class="hero">
-            <div class="container">
-                <h1>リアルタイム感情分析</h1>
-                <p>SNSの投稿を自動収集し、AWS Bedrockによる高精度な感情分析でブランドの評判をリアルタイムで監視</p>
-                <a href="#" class="cta-button" onclick="launchGradioApp()">
-                    <i class="fas fa-rocket"></i> アプリを起動
-                </a>
-            </div>
-        </section>
-
-        <section class="features" id="features">
-            <div class="container">
-                <h2>主要機能</h2>
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-search"></i>
-                        </div>
-                        <h3>自動投稿収集</h3>
-                        <p>Twitter、Instagram、FacebookなどのSNSから関連投稿を自動収集。キーワードベースの柔軟な検索設定が可能。</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-brain"></i>
-                        </div>
-                        <h3>AI感情分析</h3>
-                        <p>AWS Bedrock Novaを活用した高精度な感情分析。ポジティブ、ネガティブ、ニュートラルを詳細にスコアリング。</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-chart-bar"></i>
-                        </div>
-                        <h3>リアルタイム可視化</h3>
-                        <p>Gradioベースの直感的なダッシュボードで、感情の変化やトレンドをリアルタイムで可視化。</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-bell"></i>
-                        </div>
-                        <h3>アラート機能</h3>
-                        <p>異常なネガティブスパイクや急激な感情変化を検知し、即座にアラートでお知らせ。</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-download"></i>
-                        </div>
-                        <h3>データエクスポート</h3>
-                        <p>分析結果をCSV、JSON形式でエクスポート。外部システムとの連携も簡単に実現。</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-shield-alt"></i>
-                        </div>
-                        <h3>セキュアな基盤</h3>
-                        <p>AWS CloudFront、API Gateway、Lambdaを使用した安全でスケーラブルなインフラ構成。</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="dashboard" id="dashboard">
-            <div class="container">
-                <h2>システム状況</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-number">
-                            <span class="status-indicator"></span>
-                            <span id="posts-analyzed">0</span>
-                        </div>
-                        <div class="stat-label">分析済み投稿数</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="sentiment-score">85%</div>
-                        <div class="stat-label">平均ポジティブ率</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="active-keywords">12</div>
-                        <div class="stat-label">監視キーワード数</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">
-                            <span class="status-indicator"></span>
-                            Online
-                        </div>
-                        <div class="stat-label">システム状態</div>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <footer id="contact">
-        <div class="container">
-            <p>&copy; 2025 Social Listening Tool. Powered by AWS Bedrock & Gradio</p>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-chart-line"></i> Social Listening Tool</h1>
+            <p>ソーシャルメディアの感情分析を簡単に</p>
         </div>
-    </footer>
+
+        <div class="search-section">
+            <form class="search-form" onsubmit="searchPosts(event)">
+                <div class="form-group">
+                    <label for="keyword">検索キーワード</label>
+                    <input type="text" id="keyword" placeholder="例: iPhone, Nintendo" required>
+                </div>
+                <div class="form-group">
+                    <label for="days">期間（日）</label>
+                    <select id="days">
+                        <option value="1">1日</option>
+                        <option value="3">3日</option>
+                        <option value="7" selected>7日</option>
+                        <option value="14">14日</option>
+                        <option value="30">30日</option>
+                    </select>
+                </div>
+                <button type="submit" class="search-btn" id="searchBtn">
+                    <i class="fas fa-search"></i> 検索
+                </button>
+            </form>
+            
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                検索中...
+            </div>
+        </div>
+
+        <div id="results" class="results-section">
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <div id="sentimentChart"></div>
+                </div>
+                <div class="chart-container">
+                    <div id="timelineChart"></div>
+                </div>
+            </div>
+            
+            <div class="summary-section">
+                <div id="summary"></div>
+            </div>
+            
+            <div class="posts-section">
+                <h3>投稿データ</h3>
+                <div id="posts"></div>
+            </div>
+        </div>
+
+        <div id="error" class="error-message" style="display: none;">
+            <i class="fas fa-exclamation-circle" style="font-size: 2rem; margin-bottom: 10px; color: #ccc;"></i>
+            <p>データが見つかりませんでした</p>
+            <small>別のキーワードで検索してみてください</small>
+        </div>
+    </div>
 
     <script>
-        // 動的な統計更新
-        function updateStats() {
-            const postsElement = document.getElementById('posts-analyzed');
-            const currentPosts = parseInt(postsElement.textContent);
-            postsElement.textContent = currentPosts + Math.floor(Math.random() * 10) + 1;
-            
-            const sentimentElement = document.getElementById('sentiment-score');
-            const randomSentiment = (75 + Math.random() * 20).toFixed(1);
-            sentimentElement.textContent = randomSentiment + '%';
-        }
-
-        // Gradioアプリ起動関数
-        function launchGradioApp() {
-            // 実際の実装では、API Gateway経由でGradioアプリのURLを取得
-            // 開発環境では localhost:7860 等を使用
-            const gradioUrl = '/gradio'; // API Gateway経由のパス
-            
-            // 新しいウィンドウでGradioアプリを開く
-            window.open(gradioUrl, '_blank', 'width=1200,height=800');
-        }
-
-        // ページロード時の初期化
-        document.addEventListener('DOMContentLoaded', function() {
-            // 統計情報を5秒ごとに更新
-            setInterval(updateStats, 5000);
-            
-            // 初期統計設定
-            document.getElementById('posts-analyzed').textContent = Math.floor(Math.random() * 1000) + 500;
-            
-            // スムーズスクロール
-            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-                anchor.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const target = document.querySelector(this.getAttribute('href'));
-                    if (target) {
-                        target.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'start'
-                        });
-                    }
-                });
-            });
-
-            // ヘッダーの背景透明度調整
-            window.addEventListener('scroll', function() {
-                const header = document.querySelector('header');
-                const scrolled = window.pageYOffset;
-                const rate = scrolled * -0.5;
-                
-                if (scrolled > 100) {
-                    header.style.background = 'rgba(255, 255, 255, 0.95)';
-                    header.style.backdropFilter = 'blur(20px)';
-                } else {
-                    header.style.background = 'rgba(255, 255, 255, 0.1)';
-                    header.style.backdropFilter = 'blur(10px)';
-                }
-            });
-        });
-
-        // API接続テスト関数
-        async function testApiConnection() {
+        // Gradioアプリに直接API呼び出し
+        async function callGradioFunction(functionName, inputs) {
             try {
-                const response = await fetch('/api/health');
+                const response = await fetch('/gradio/api/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fn_index: functionName === 'search' ? 0 : 1, // Gradioの関数インデックス
+                        data: inputs
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
-                console.log('API Status:', data);
+                return data.data;
             } catch (error) {
-                console.error('API接続エラー:', error);
+                console.error('Gradio API error:', error);
+                throw error;
             }
         }
 
-        // 定期的なAPIヘルスチェック
-        setInterval(testApiConnection, 30000);
+        async function searchPosts(event) {
+            event.preventDefault();
+            
+            const keyword = document.getElementById('keyword').value;
+            const days = parseInt(document.getElementById('days').value);
+            const loadingDiv = document.getElementById('loading');
+            const resultsDiv = document.getElementById('results');
+            const errorDiv = document.getElementById('error');
+            const searchBtn = document.getElementById('searchBtn');
+            
+            // UI状態をリセット
+            loadingDiv.style.display = 'block';
+            resultsDiv.classList.remove('show');
+            errorDiv.style.display = 'none';
+            searchBtn.disabled = true;
+            
+            try {
+                // 既存のGradioアプリの検索機能を呼び出し
+                const result = await callGradioFunction('search', [keyword, days]);
+                
+                if (result && result.length > 0) {
+                    // result[0]: sentiment chart, result[1]: timeline chart, result[2]: summary, result[3]: posts data
+                    const [sentimentFig, timelineFig, summaryText, postsData] = result;
+                    
+                    displayResults(sentimentFig, timelineFig, summaryText, postsData, keyword);
+                    resultsDiv.classList.add('show');
+                } else {
+                    errorDiv.style.display = 'block';
+                }
+                
+            } catch (error) {
+                console.error('Search error:', error);
+                
+                // フォールバック: 既存のGradio app.pyのsearch_posts関数を模倣
+                try {
+                    const mockData = await generateMockData(keyword, days);
+                    if (mockData.length > 0) {
+                        displayResultsFromData(mockData, keyword);
+                        resultsDiv.classList.add('show');
+                    } else {
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (fallbackError) {
+                    console.error('Fallback failed:', fallbackError);
+                    errorDiv.style.display = 'block';
+                }
+            } finally {
+                loadingDiv.style.display = 'none';
+                searchBtn.disabled = false;
+            }
+        }
+
+        // フォールバック用のダミーデータ生成（DynamoDBが利用できない場合）
+        async function generateMockData(keyword, days) {
+            // デバッグ用: 実際のDynamoDBにデータがない場合のフォールバック
+            return []; // 空データを返してエラー処理をテスト
+        }
+
+        function displayResults(sentimentFig, timelineFig, summaryText, postsData, keyword) {
+            // Gradioから返されたPlotlyグラフをそのまま表示
+            if (sentimentFig && sentimentFig.data) {
+                Plotly.newPlot('sentimentChart', sentimentFig.data, sentimentFig.layout || {
+                    title: '感情分布',
+                    font: { family: 'Segoe UI, sans-serif' }
+                });
+            }
+            
+            if (timelineFig && timelineFig.data) {
+                Plotly.newPlot('timelineChart', timelineFig.data, timelineFig.layout || {
+                    title: '感情推移',
+                    xaxis: { title: '日付' },
+                    yaxis: { title: '投稿数' },
+                    font: { family: 'Segoe UI, sans-serif' }
+                });
+            }
+            
+            // サマリー表示
+            document.getElementById('summary').innerHTML = summaryText || `
+                <h3>分析結果 - ${keyword}</h3>
+                <p>データを分析中です...</p>
+            `;
+            
+            // 投稿データ表示
+            if (postsData && postsData.length > 0) {
+                const postsHtml = postsData.slice(0, 10).map(post => `
+                    <div class="post-item ${post[2] ? post[2].toLowerCase().replace(/[^a-z]/g, '') : 'neutral'}">
+                        <div class="post-meta">
+                            <span class="sentiment-badge ${post[2] ? post[2].toLowerCase().replace(/[^a-z]/g, '') : 'neutral'}">
+                                ${post[2] || 'ニュートラル'}
+                            </span>
+                            <span>${post[4] || new Date().toLocaleDateString('ja-JP')}</span>
+                        </div>
+                        <div class="post-content">${post[0] || 'データなし'}</div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('posts').innerHTML = `<h3>最新投稿 (${Math.min(10, postsData.length)}件)</h3>` + postsHtml;
+            }
+        }
+
+        function displayResultsFromData(posts, keyword) {
+            // 元のJavaScript関数をそのまま使用
+            const sentimentCounts = posts.reduce((acc, post) => {
+                acc[post.sentiment] = (acc[post.sentiment] || 0) + 1;
+                return acc;
+            }, {});
+            
+            // 感情分布チャート
+            const sentimentData = [{
+                values: Object.values(sentimentCounts),
+                labels: Object.keys(sentimentCounts).map(s => 
+                    s === 'positive' ? 'ポジティブ' : 
+                    s === 'negative' ? 'ネガティブ' : 'ニュートラル'
+                ),
+                type: 'pie',
+                marker: {
+                    colors: ['#4CAF50', '#F44336', '#9E9E9E']
+                },
+                hole: 0.3
+            }];
+            
+            Plotly.newPlot('sentimentChart', sentimentData, {
+                title: '感情分布',
+                font: { family: 'Segoe UI, sans-serif' }
+            });
+            
+            // 時系列チャート
+            const timelineData = processTimelineData(posts);
+            Plotly.newPlot('timelineChart', timelineData.data, {
+                title: '感情推移',
+                xaxis: { title: '日付' },
+                yaxis: { title: '投稿数' },
+                font: { family: 'Segoe UI, sans-serif' }
+            });
+            
+            // サマリー
+            const total = posts.length;
+            const positive = sentimentCounts.positive || 0;
+            const negative = sentimentCounts.negative || 0;
+            const score = ((positive - negative) / total * 100).toFixed(1);
+            
+            document.getElementById('summary').innerHTML = `
+                <h3>分析結果 - ${keyword}</h3>
+                <p><strong>総投稿数:</strong> ${total}件</p>
+                <p><strong>ポジティブ:</strong> ${positive}件 (${(positive/total*100).toFixed(1)}%)</p>
+                <p><strong>ネガティブ:</strong> ${negative}件 (${(negative/total*100).toFixed(1)}%)</p>
+                <p><strong>総合スコア:</strong> ${score > 0 ? '+' : ''}${score}点</p>
+            `;
+            
+            // 投稿リスト
+            const postsHtml = posts.slice(0, 10).map(post => `
+                <div class="post-item ${post.sentiment}">
+                    <div class="post-meta">
+                        <span class="sentiment-badge ${post.sentiment}">
+                            ${post.sentiment === 'positive' ? 'ポジティブ' : 
+                              post.sentiment === 'negative' ? 'ネガティブ' : 'ニュートラル'}
+                        </span>
+                        <span>${new Date(post.timestamp).toLocaleDateString('ja-JP')}</span>
+                    </div>
+                    <div class="post-content">${post.content}</div>
+                </div>
+            `).join('');
+            
+            document.getElementById('posts').innerHTML = `<h3>最新投稿 (${Math.min(10, posts.length)}件)</h3>` + postsHtml;
+        }
+        
+        function processTimelineData(posts) {
+            // 日別集計
+            const dailyData = {};
+            
+            posts.forEach(post => {
+                const date = new Date(post.timestamp).toISOString().split('T')[0];
+                if (!dailyData[date]) {
+                    dailyData[date] = { positive: 0, negative: 0, neutral: 0 };
+                }
+                dailyData[date][post.sentiment]++;
+            });
+            
+            const dates = Object.keys(dailyData).sort();
+            
+            return {
+                data: [
+                    {
+                        x: dates,
+                        y: dates.map(date => dailyData[date].positive),
+                        name: 'ポジティブ',
+                        type: 'scatter',
+                        mode: 'lines+markers',
+                        marker: { color: '#4CAF50' }
+                    },
+                    {
+                        x: dates,
+                        y: dates.map(date => dailyData[date].negative),
+                        name: 'ネガティブ',
+                        type: 'scatter',
+                        mode: 'lines+markers',
+                        marker: { color: '#F44336' }
+                    },
+                    {
+                        x: dates,
+                        y: dates.map(date => dailyData[date].neutral),
+                        name: 'ニュートラル',
+                        type: 'scatter',
+                        mode: 'lines+markers',
+                        marker: { color: '#9E9E9E' }
+                    }
+                ]
+            };
+        }
+
+        // ページ読み込み時にGradioアプリの可用性をチェック
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/gradio/api/')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Gradio API available:', data);
+                })
+                .catch(error => {
+                    console.warn('Gradio API not available, using fallback mode:', error);
+                });
+        });
     </script>
 </body>
 </html>
