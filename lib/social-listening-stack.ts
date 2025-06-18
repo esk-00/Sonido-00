@@ -108,11 +108,11 @@ export class SocialListeningStack extends cdk.Stack {
     });
 
     // ==============================================
-    // Lambda Function (正しい名前で作成)
+    // Lambda Function (元のシンプルな構成)
     // ==============================================
     
     const gradioFunction = new lambda.Function(this, 'GradioFunction', {
-      functionName: 'social-listening-gradio', // 既存の関数名と一致
+      functionName: 'social-listening-gradio',
       runtime: lambda.Runtime.PYTHON_3_11,
       handler: 'handler.lambda_handler',
       code: lambda.Code.fromAsset('frontend/gradio-app'),
